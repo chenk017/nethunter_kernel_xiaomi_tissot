@@ -12,26 +12,23 @@ jobs:
   build:
     runs-on: ubuntu-22.04
 
-    permissions:
-      contents: write
-
     steps:
 
-      # ============================================================
-      # CHECKOUT SOURCE
-      # ============================================================
-      - name: Ambil Kode dari Repositori Ini
+      # =========================================================
+      # CHECKOUT
+      # =========================================================
+      - name: Checkout source
         uses: actions/checkout@v4
 
 
-      # ============================================================
+      # =========================================================
       # DEPENDENCIES
-      # ============================================================
-      - name: Pasang Library, Dependensi, dan Kompiler
+      # =========================================================
+      - name: Install dependencies
         run: |
-          sudo apt-get update -y
+          sudo apt update
 
-          sudo apt-get install --fix-missing -y \
+          sudo apt install -y \
             bc \
             build-essential \
             libncurses5-dev \
@@ -50,215 +47,275 @@ jobs:
             gcc-arm-linux-gnueabi
 
 
-      # ============================================================
-      # OPENSSL / CERTIFICATE FIX
-      # ============================================================
-      - name: Jinakkan File OpenSSL dan Buat Kunci Tiruan
+      # =========================================================
+      # OPENSSL / CERT FIX
+      # =========================================================
+      - name: Fix certificate build
         run: |
-          echo "=================================================="
-          echo " OPENSSL / CERTIFICATE FIX"
-          echo "=================================================="
-
-          echo 'int main(int argc, char **argv) { return 0; }' \
-            > scripts/extract-cert.c
-
-          mkdir -p certs
+          cat > scripts/extract-cert.c <<'EOF'
+          int main(void)
+          {
+              return 0;
+          }
+          EOF
 
           touch certs/signing_key.x509
           touch certs/x509_certificate_list
 
 
-      # ============================================================
+      # =========================================================
       # AVTIMER FIX
-      # ============================================================
-      - name: Fix Avtimer Type Error
+      # =========================================================
+      - name: Fix avtimer
         run: |
-          echo "=================================================="
-          echo " AVTIMER FIX"
-          echo "=================================================="
+          grep -Rni "msm_isp_set_avtimer_fptr(av_fptr);" \
+            drivers/media/platform/msm/camera_v2 \
+            2>/dev/null || true
 
-          if [ -f techpack/audio/dsp/avtimer.c ]; then
+          find drivers -type f -name "*.c" -exec \
             sed -i \
-              's/msm_isp_set_avtimer_fptr(av_fptr);/\/\/ msm_isp_set_avtimer_fptr(av_fptr);/g' \
-              techpack/audio/dsp/avtimer.c
-
-            echo "Avtimer fix diterapkan."
-          else
-            echo "avtimer.c tidak ditemukan, dilewati."
-          fi
+            's/msm_isp_set_avtimer_fptr(av_fptr);/\/\/ msm_isp_set_avtimer_fptr(av_fptr);/g' \
+            {} \;
 
 
-      # ============================================================
-      # NETHUNTER / HID / WIRELESS / R8188EUS CONFIG
-      # ============================================================
-      - name: Suntik Fitur NetHunter dan Driver R8188EUS
+      # =========================================================
+      # CONFIG INJECTION
+      # =========================================================
+      - name: Inject NetHunter / HID / WiFi config
         run: |
+
           CONFIG_FILE="arch/arm64/configs/tissot_defconfig"
 
           echo "=================================================="
-          echo " MENYIAPKAN KONFIGURASI NETHUNTER"
+          echo " INJECT CONFIG"
           echo "=================================================="
 
-          # --------------------------------------------------------
-          # USB / HID
-          # --------------------------------------------------------
-          echo "CONFIG_USB_G_ANDROID=y" >> "$CONFIG_FILE"
-          echo "CONFIG_USB_F_HID=y" >> "$CONFIG_FILE"
-          echo "CONFIG_CONFIGFS_F_HID=y" >> "$CONFIG_FILE"
+          cat >> "$CONFIG_FILE" <<'EOF'
 
-          # --------------------------------------------------------
+          # =================================================
+          # USB HID / GADGET
+          # =================================================
+          CONFIG_USB=y
+          CONFIG_USB_G_ANDROID=y
+          CONFIG_USB_F_HID=y
+          CONFIG_CONFIGFS_F_HID=y
+
+          # =================================================
           # WIRELESS CORE
-          # --------------------------------------------------------
-          echo "CONFIG_WIRELESS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_CFG80211=y" >> "$CONFIG_FILE"
-          echo "CONFIG_MAC80211=y" >> "$CONFIG_FILE"
+          # =================================================
+          CONFIG_WIRELESS=y
+          CONFIG_CFG80211=y
+          CONFIG_MAC80211=y
 
-          # --------------------------------------------------------
-          # REALTEK NEWRTL
-          # Driver:
-          # drivers/net/wireless/realtek/newrtl/rtl8188eus
-          # --------------------------------------------------------
-          echo "CONFIG_NEW_REALTEK=y" >> "$CONFIG_FILE"
-          echo "CONFIG_RTL8188EU=y" >> "$CONFIG_FILE"
+          # =================================================
+          # USB NETWORK
+          # =================================================
+          CONFIG_USB_USBNET=y
 
-          # --------------------------------------------------------
-          # USB SUPPORT
-          # --------------------------------------------------------
-          echo "CONFIG_USB=y" >> "$CONFIG_FILE"
-          echo "CONFIG_USB_USBNET=y" >> "$CONFIG_FILE"
+          # =================================================
+          # REALTEK R8188EUS
+          # =================================================
+          CONFIG_NEW_REALTEK=y
+          CONFIG_RTL8188EU=y
 
-          # --------------------------------------------------------
-          # BLUETOOTH
-          # --------------------------------------------------------
-          echo "CONFIG_BT=n" >> "$CONFIG_FILE"
-          echo "CONFIG_MSM_BT_POWER=n" >> "$CONFIG_FILE"
-          echo "CONFIG_BTFM_SLIM=n" >> "$CONFIG_FILE"
-          echo "CONFIG_BTFM_SLIM_WCN3990=n" >> "$CONFIG_FILE"
+          # =================================================
+          # DISABLE BLUETOOTH
+          # =================================================
+          CONFIG_BT=n
+          CONFIG_MSM_BT_POWER=n
+          CONFIG_BTFM_SLIM=n
 
-          # --------------------------------------------------------
-          # MODULE SIGNATURE
-          # --------------------------------------------------------
-          echo "CONFIG_MODULE_SIG=n" >> "$CONFIG_FILE"
-          echo "CONFIG_MODULE_SIG_FORCE=n" >> "$CONFIG_FILE"
-          echo "CONFIG_SYSTEM_TRUSTED_KEYRING=n" >> "$CONFIG_FILE"
-          echo "CONFIG_SYSTEM_REVOCATION_LIST=n" >> "$CONFIG_FILE"
+          EOF
 
-          # --------------------------------------------------------
-          # CAMERA / AVTIMER
-          # --------------------------------------------------------
-          echo "CONFIG_VIDEO_V4L2_SUBDEV_API=n" >> "$CONFIG_FILE"
-          echo "CONFIG_MEDIA_CAMERA_SUPPORT=n" >> "$CONFIG_FILE"
-          echo "CONFIG_MSM_CAMERA=n" >> "$CONFIG_FILE"
-          echo "CONFIG_MSM_CAMERA_V4L2=n" >> "$CONFIG_FILE"
-          echo "CONFIG_MSM_AVTIMER=n" >> "$CONFIG_FILE"
-
-          echo ""
+          echo
           echo "=================================================="
-          echo " CEK SYMBOL DI TISSOT_DEFCONFIG"
+          echo " CONFIG YANG DI-INJECT"
           echo "=================================================="
 
           grep -nE \
-            'CONFIG_NEW_REALTEK|CONFIG_RTL8188EU|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID' \
+            'CONFIG_USB_G_ANDROID|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID|CONFIG_WIRELESS|CONFIG_CFG80211|CONFIG_MAC80211|CONFIG_USB_USBNET|CONFIG_NEW_REALTEK|CONFIG_RTL8188EU|CONFIG_BT=' \
             "$CONFIG_FILE" || true
 
-          echo ""
+
+      # =========================================================
+      # CHECK KCONFIG SOURCE
+      # =========================================================
+      - name: Check Realtek Kconfig source
+        run: |
+
           echo "=================================================="
-          echo " KONFIGURASI SELESAI"
+          echo " REALTEK KCONFIG SOURCE"
           echo "=================================================="
 
+          echo "--- realtek/Kconfig ---"
 
-      # ============================================================
-      # BUILD CONFIGURATION
-      # ============================================================
-      - name: Membuat Konfigurasi Kernel Tissot
+          grep -n "newrtl" \
+            drivers/net/wireless/realtek/Kconfig \
+            || true
+
+          echo
+          echo "--- newrtl/Kconfig ---"
+
+          grep -n -A20 -B5 \
+            "config NEW_REALTEK" \
+            drivers/net/wireless/realtek/newrtl/Kconfig \
+            || true
+
+          echo
+          echo "--- rtl8188eus/Kconfig ---"
+
+          grep -n -A15 -B5 \
+            "config RTL8188EU" \
+            drivers/net/wireless/realtek/newrtl/rtl8188eus/Kconfig \
+            || true
+
+
+      # =========================================================
+      # PRE DEFCONFIG CHECK
+      # =========================================================
+      - name: Check config before defconfig
+        run: |
+
+          CONFIG_FILE="arch/arm64/configs/tissot_defconfig"
+
+          echo "=================================================="
+          echo " SEBELUM MAKE TISSOT_DEFCONFIG"
+          echo "=================================================="
+
+          grep -nE \
+            'CONFIG_NEW_REALTEK|CONFIG_RTL8188EU|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID|CONFIG_WIRELESS|CONFIG_CFG80211|CONFIG_MAC80211|CONFIG_USB=' \
+            "$CONFIG_FILE" \
+            || true
+
+
+      # =========================================================
+      # DEFCONFIG
+      # =========================================================
+      - name: Generate kernel config
         run: |
 
           export ARCH=arm64
           export SUBARCH=arm64
-
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
-          echo "=================================================="
-          echo " LOAD TISSOT DEFCONFIG"
-          echo "=================================================="
-
           make tissot_defconfig
 
-          echo ""
+
+      # =========================================================
+      # POST DEFCONFIG CHECK
+      # =========================================================
+      - name: Verify final Kconfig
+        run: |
+
           echo "=================================================="
           echo " HASIL KCONFIG DI .config"
           echo "=================================================="
 
-          echo ""
+          echo
           echo "--- USB / HID ---"
+
           grep -nE \
             'CONFIG_USB_G_ANDROID|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID' \
-            .config || true
+            .config \
+            || true
 
-          echo ""
+          echo
           echo "--- WIRELESS CORE ---"
+
           grep -nE \
             'CONFIG_WIRELESS|CONFIG_CFG80211|CONFIG_MAC80211' \
-            .config || true
+            .config \
+            || true
 
-          echo ""
+          echo
           echo "--- REALTEK R8188EUS ---"
+
           grep -nE \
             'CONFIG_NEW_REALTEK|CONFIG_RTL8188EU' \
-            .config || true
+            .config \
+            || true
 
-          echo ""
+          echo
           echo "--- USB ---"
+
           grep -nE \
             'CONFIG_USB=|CONFIG_USB_USBNET' \
-            .config || true
+            .config \
+            || true
 
-          echo ""
+          echo
           echo "=================================================="
-          echo " SELESAI MEMERIKSA .config"
+          echo " CEK CONFIG NEGATIF"
           echo "=================================================="
 
+          grep -nE \
+            '# CONFIG_NEW_REALTEK is not set|# CONFIG_RTL8188EU is not set' \
+            .config \
+            || true
 
-      # ============================================================
-      # COMPILE KERNEL
-      # ============================================================
-      - name: Proses Kompilasi Kernel
+
+      # =========================================================
+      # FAIL EARLY JIKA R8188EUS HILANG
+      # =========================================================
+      - name: Require R8188EUS
+        run: |
+
+          echo "=================================================="
+          echo " VALIDASI R8188EUS"
+          echo "=================================================="
+
+          if grep -q '^CONFIG_NEW_REALTEK=y$' .config && \
+             grep -q '^CONFIG_RTL8188EU=y$' .config; then
+
+              echo "R8188EUS CONFIG: OK"
+              echo "CONFIG_NEW_REALTEK=y"
+              echo "CONFIG_RTL8188EU=y"
+
+          else
+
+              echo "ERROR: R8188EUS BELUM AKTIF DI .config"
+              echo
+              echo "Isi yang ditemukan:"
+              grep -nE \
+                'NEW_REALTEK|RTL8188EU' \
+                .config \
+                || true
+
+              exit 1
+
+          fi
+
+
+      # =========================================================
+      # BUILD
+      # =========================================================
+      - name: Compile kernel
         run: |
 
           export ARCH=arm64
           export SUBARCH=arm64
-
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
-          # --------------------------------------------------------
-          # BUILD IDENTIFICATION
-          # --------------------------------------------------------
           export LOCALVERSION="-Umbaran_01"
-
           export KBUILD_BUILD_USER="sukma"
           export KBUILD_BUILD_HOST="UmbaranDev-Cloud"
 
-          # --------------------------------------------------------
-          # INTERNAL INCLUDE PATH
-          # --------------------------------------------------------
           export ROOT_DIR="${{ github.workspace }}"
 
           export INTERNAL_INCLUDES="\
-          -I$ROOT_DIR/drivers/gpu/msm \
-          -I$ROOT_DIR/drivers/media/platform/msm \
-          -I$ROOT_DIR/drivers/media/platform/msm/sde \
-          -I$ROOT_DIR/drivers/platform/msm/ipa/ipa_clients \
-          -I$ROOT_DIR/drivers/platform/msm/ipa/ipa_v2 \
-          -I$ROOT_DIR/drivers/usb/gadget"
+          -I${ROOT_DIR}/include \
+          -I${ROOT_DIR}/arch/arm64/include \
+          -I${ROOT_DIR}/arch/arm64/include/generated \
+          -I${ROOT_DIR}/include/generated"
 
           echo "=================================================="
           echo " MULAI KOMPILASI KERNEL"
           echo "=================================================="
 
           make -j$(nproc --all) \
-            KCFLAGS="-w -fpermissive $INTERNAL_INCLUDES" \
+            KCFLAGS="-w -fpermissive ${INTERNAL_INCLUDES}" \
             CFLAGS_MODULE="-w" \
             CONFIG_SYSTEM_TRUSTED_KEYS="" \
             CONFIG_MODULE_SIG=n \
@@ -266,63 +323,59 @@ jobs:
             CONFIG_BT=n
 
 
-      # ============================================================
-      # CHECK BUILD RESULT
-      # ============================================================
-      - name: Periksa dan Amankan Hasil Kompilasi
+      # =========================================================
+      # CHECK OUTPUT
+      # =========================================================
+      - name: Check kernel output
         run: |
 
           echo "=================================================="
-          echo " MEMERIKSA HASIL BUILD"
+          echo " HASIL BUILD"
           echo "=================================================="
 
-          mkdir -p "${{ github.workspace }}/output"
+          find arch/arm64/boot \
+            -maxdepth 2 \
+            -type f \
+            \( \
+              -name "Image.gz" \
+              -o -name "Image.gz-dtb" \
+              -o -name "*.dtb" \
+              \) \
+            -print
+
+
+      # =========================================================
+      # PREPARE ARTIFACT
+      # =========================================================
+      - name: Prepare artifact
+        run: |
+
+          mkdir -p output
 
           if [ -f arch/arm64/boot/Image.gz-dtb ]; then
-
-            cp \
-              arch/arm64/boot/Image.gz-dtb \
-              "${{ github.workspace }}/output/"
-
-            echo ""
-            echo "SUKSES: Image.gz-dtb berhasil diamankan!"
-
+              cp arch/arm64/boot/Image.gz-dtb output/
           elif [ -f arch/arm64/boot/Image.gz ]; then
-
-            cp \
-              arch/arm64/boot/Image.gz \
-              "${{ github.workspace }}/output/"
-
-            find arch/arm64/boot/dts/ \
-              -name "*.dtb" \
-              -exec cp {} "${{ github.workspace }}/output/" \; \
-              2>/dev/null || true
-
-            echo ""
-            echo "SUKSES: Image.gz berhasil diamankan!"
-
-          else
-
-            echo ""
-            echo "GAGAL: Kernel image tidak ditemukan!"
-            exit 1
-
+              cp arch/arm64/boot/Image.gz output/
           fi
 
-          echo ""
+          find arch/arm64/boot/dts \
+            -type f \
+            -name "*.dtb" \
+            -exec cp {} output/ \; \
+            2>/dev/null || true
+
           echo "=================================================="
-          echo " FILE OUTPUT"
+          echo " OUTPUT"
           echo "=================================================="
 
-          ls -lah "${{ github.workspace }}/output/"
+          ls -lh output
 
 
-      # ============================================================
+      # =========================================================
       # UPLOAD ARTIFACT
-      # ============================================================
-      - name: Unggah Hasil Kernel
+      # =========================================================
+      - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
-
         with:
-          name: Tissot-NetHunter-R8188EUS-Kernel
-          path: ${{ github.workspace }}/output/
+          name: tissot-kernel-r8188eus
+          path: output/
