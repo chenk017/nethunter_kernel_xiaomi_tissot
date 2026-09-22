@@ -11,115 +11,277 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+
     permissions:
       contents: write
 
     steps:
+
+      # ============================================================
+      # CHECKOUT SOURCE
+      # ============================================================
       - name: Ambil Kode dari Repositori Ini
         uses: actions/checkout@v4
 
-      - name: Pasang Library, Dependensi, dan Kompiler Lengkap (64-Bit & 32-Bit)
+
+      # ============================================================
+      # DEPENDENCIES & CROSS COMPILER
+      # ============================================================
+      - name: Pasang Library, Dependensi, dan Kompiler Lengkap
         run: |
           sudo apt-get update -y
-          sudo apt-get install --fix-missing -y bc build-essential libncurses5-dev libssl-dev xz-utils wget curl git cpio lz4 rsync libxml2 flex bison gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-      - name: Jinakkan File OpenSSL & Buat Kunci Tiruan (Bypass Certs Error)
+          sudo apt-get install --fix-missing -y \
+            bc \
+            build-essential \
+            libncurses5-dev \
+            libssl-dev \
+            xz-utils \
+            wget \
+            curl \
+            git \
+            cpio \
+            lz4 \
+            rsync \
+            libxml2 \
+            flex \
+            bison \
+            gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi
+
+
+      # ============================================================
+      # OPENSSL / CERTIFICATE FIX
+      # ============================================================
+      - name: Jinakkan File OpenSSL dan Buat Kunci Tiruan
         run: |
           echo "=== Menjinakkan Berkas extract-cert.c ==="
-          echo 'int main(int argc, char **argv) { return 0; }' > scripts/extract-cert.c
-          
+
+          echo 'int main(int argc, char **argv) { return 0; }' \
+            > scripts/extract-cert.c
+
           mkdir -p certs
+
           touch certs/signing_key.x509
           touch certs/x509_certificate_list
 
-      - name: Komentari Baris Kamera Pada Driver Audio (Fix Avtimer Type Error)
+
+      # ============================================================
+      # AVTIMER FIX
+      # ============================================================
+      - name: Fix Avtimer Type Error
         run: |
           echo "=== Menonaktifkan Baris avtimer_fptr Bermasalah ==="
-          # Menghapus atau mengomentari fungsi pemanggil kamera msm_isp agar tidak diproses sama sekali
+
           if [ -f techpack/audio/dsp/avtimer.c ]; then
-             sed -i 's/msm_isp_set_avtimer_fptr(av_fptr);/\/\/ msm_isp_set_avtimer_fptr(av_fptr);/g' techpack/audio/dsp/avtimer.c
+            sed -i \
+              's/msm_isp_set_avtimer_fptr(av_fptr);/\/\/ msm_isp_set_avtimer_fptr(av_fptr);/g' \
+              techpack/audio/dsp/avtimer.c
           fi
 
-      - name: Otomatisasi Suntik Fitur NetHunter & Matikan Modul Pengganggu Akhir
+
+      # ============================================================
+      # NETHUNTER + HID + R8188EUS CONFIGURATION
+      # ============================================================
+      - name: Otomatisasi Fitur NetHunter dan R8188EUS
         run: |
           CONFIG_FILE="arch/arm64/configs/tissot_defconfig"
-          echo "=== Menyuntikkan Konfigurasi NetHunter ==="
+
+          echo "=================================================="
+          echo " MENYIAPKAN KONFIGURASI NETHUNTER"
+          echo "=================================================="
+
+          # --------------------------------------------------------
+          # USB / HID
+          # --------------------------------------------------------
           echo "CONFIG_USB_G_ANDROID=y" >> $CONFIG_FILE
           echo "CONFIG_USB_F_HID=y" >> $CONFIG_FILE
           echo "CONFIG_CONFIGFS_F_HID=y" >> $CONFIG_FILE
+
+          # --------------------------------------------------------
+          # WIRELESS CORE
+          # --------------------------------------------------------
           echo "CONFIG_WIRELESS=y" >> $CONFIG_FILE
           echo "CONFIG_CFG80211=y" >> $CONFIG_FILE
           echo "CONFIG_MAC80211=y" >> $CONFIG_FILE
-          echo "CONFIG_CFG80211_WEXT=y" >> $CONFIG_FILE
-          echo "CONFIG_ATH_CARDS=y" >> $CONFIG_FILE
-          echo "CONFIG_ATH9K_HTC=y" >> $CONFIG_FILE
-          echo "CONFIG_RTL8187=y" >> $CONFIG_FILE
-          echo "CONFIG_RTL_CARDS=y" >> $CONFIG_FILE
-          echo "CONFIG_RTL8192CU=y" >> $CONFIG_FILE
-          
-          echo "=== Mematikan Total Driver Bluetooth Pengganggu ==="
+
+          # --------------------------------------------------------
+          # REALTEK NEWRTL
+          # --------------------------------------------------------
+          # Driver R8188EUS yang ada di source repo:
+          # drivers/net/wireless/realtek/newrtl/rtl8188eus
+          echo "CONFIG_NEW_REALTEK=y" >> $CONFIG_FILE
+          echo "CONFIG_RTL8188EU=y" >> $CONFIG_FILE
+
+          # --------------------------------------------------------
+          # USB SUPPORT
+          # --------------------------------------------------------
+          echo "CONFIG_USB=y" >> $CONFIG_FILE
+          echo "CONFIG_USB_USBNET=y" >> $CONFIG_FILE
+
+          # --------------------------------------------------------
+          # MATIKAN DRIVER BLUETOOTH PENGGANGGU
+          # --------------------------------------------------------
           echo "CONFIG_BT=n" >> $CONFIG_FILE
           echo "CONFIG_MSM_BT_POWER=n" >> $CONFIG_FILE
           echo "CONFIG_BTFM_SLIM=n" >> $CONFIG_FILE
           echo "CONFIG_BTFM_SLIM_WCN3990=n" >> $CONFIG_FILE
-          
-          echo "=== Mematikan Modul Sertifikat & Solusi Linking Error ==="
+
+          # --------------------------------------------------------
+          # MATIKAN MODULE SIGNATURE
+          # --------------------------------------------------------
           echo "CONFIG_MODULE_SIG=n" >> $CONFIG_FILE
           echo "CONFIG_MODULE_SIG_FORCE=n" >> $CONFIG_FILE
           echo "CONFIG_SYSTEM_TRUSTED_KEYRING=n" >> $CONFIG_FILE
           echo "CONFIG_SYSTEM_REVOCATION_LIST=n" >> $CONFIG_FILE
-          
-          echo "=== Mematikan Modul Kamera & Audio Avtimer Secara Agresif ==="
+
+          # --------------------------------------------------------
+          # CAMERA / AVTIMER
+          # --------------------------------------------------------
           echo "CONFIG_VIDEO_V4L2_SUBDEV_API=n" >> $CONFIG_FILE
           echo "CONFIG_MEDIA_CAMERA_SUPPORT=n" >> $CONFIG_FILE
           echo "CONFIG_MSM_CAMERA=n" >> $CONFIG_FILE
           echo "CONFIG_MSM_CAMERA_V4L2=n" >> $CONFIG_FILE
           echo "CONFIG_MSM_AVTIMER=n" >> $CONFIG_FILE
-          echo "=== Selesai Konfigurasi ==="
 
-      - name: Proses Kompilasi (Compiling) Kernel + Tanda Tangan Custom
+          echo "=================================================="
+          echo " KONFIGURASI SELESAI"
+          echo "=================================================="
+
+
+      # ============================================================
+      # BUILD KERNEL
+      # ============================================================
+      - name: Proses Kompilasi Kernel
         run: |
+
           export ARCH=arm64
           export SUBARCH=arm64
+
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-          
-          # ==================== TOMBOL TANDA TANGAN KAMU ====================
+
+          # --------------------------------------------------------
+          # BUILD IDENTIFICATION
+          # --------------------------------------------------------
           export LOCALVERSION="-Umbaran_01"
+
           export KBUILD_BUILD_USER="sukma"
           export KBUILD_BUILD_HOST="UmbaranDev-Cloud"
-          # ==================================================================
-          
-          # Membuat konfigurasi bawaan Tissot yang sudah dimodifikasi
-          make tissot_defconfig
-          
-          # Membuka jalur include internal secara dinamis
-          export ROOT_DIR="${{ github.workspace }}"
-          export INTERNAL_INCLUDES="-I$ROOT_DIR/drivers/gpu/msm -I$ROOT_DIR/drivers/media/platform/msm -I$ROOT_DIR/drivers/media/platform/msm/sde -I$ROOT_DIR/drivers/platform/msm/ipa/ipa_clients -I$ROOT_DIR/drivers/platform/msm/ipa/ipa_v2 -I$ROOT_DIR/drivers/usb/gadget"
-          
-          # Memulai kompilasi dengan bendera toleransi tingkat tinggi (fpermissive)
-          make -j$(nproc --all) KCFLAGS="-w -fpermissive $INTERNAL_INCLUDES" CFLAGS_MODULE="-w" CONFIG_SYSTEM_TRUSTED_KEYS="" CONFIG_MODULE_SIG=n CONFIG_MSM_AVTIMER=n CONFIG_BT=n
 
-      - name: Periksa dan Amankan Hasil Kompilasi (Multi-Check)
+          # --------------------------------------------------------
+          # LOAD TISSOT DEFAULT CONFIG
+          # --------------------------------------------------------
+          echo "=================================================="
+          echo " LOAD TISSOT DEFCONFIG"
+          echo "=================================================="
+
+          make tissot_defconfig
+
+          # --------------------------------------------------------
+          # VERIFY IMPORTANT CONFIGURATION
+          # --------------------------------------------------------
+          echo "=================================================="
+          echo " CEK KONFIGURASI PENTING"
+          echo "=================================================="
+
+          echo "--- USB / HID ---"
+          grep -E \
+            'CONFIG_USB_G_ANDROID|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID' \
+            .config || true
+
+          echo "--- WIRELESS ---"
+          grep -E \
+            'CONFIG_WIRELESS|CONFIG_CFG80211|CONFIG_MAC80211' \
+            .config || true
+
+          echo "--- REALTEK R8188EUS ---"
+          grep -E \
+            'CONFIG_NEW_REALTEK|CONFIG_RTL8188EU' \
+            .config || true
+
+          echo "=================================================="
+
+          # --------------------------------------------------------
+          # INTERNAL INCLUDE PATH
+          # --------------------------------------------------------
+          export ROOT_DIR="${{ github.workspace }}"
+
+          export INTERNAL_INCLUDES="\
+          -I$ROOT_DIR/drivers/gpu/msm \
+          -I$ROOT_DIR/drivers/media/platform/msm \
+          -I$ROOT_DIR/drivers/media/platform/msm/sde \
+          -I$ROOT_DIR/drivers/platform/msm/ipa/ipa_clients \
+          -I$ROOT_DIR/drivers/platform/msm/ipa/ipa_v2 \
+          -I$ROOT_DIR/drivers/usb/gadget"
+
+          # --------------------------------------------------------
+          # COMPILE
+          # --------------------------------------------------------
+          echo "=================================================="
+          echo " MULAI KOMPILASI KERNEL"
+          echo "=================================================="
+
+          make -j$(nproc --all) \
+            KCFLAGS="-w -fpermissive $INTERNAL_INCLUDES" \
+            CFLAGS_MODULE="-w" \
+            CONFIG_SYSTEM_TRUSTED_KEYS="" \
+            CONFIG_MODULE_SIG=n \
+            CONFIG_MSM_AVTIMER=n \
+            CONFIG_BT=n
+
+
+      # ============================================================
+      # CHECK BUILD RESULT
+      # ============================================================
+      - name: Periksa dan Amankan Hasil Kompilasi
         run: |
-          echo "=== Memulai Proses Pemindahan File Biner ==="
-          mkdir -p ${{ github.workspace }}/output
-          
+
+          echo "=================================================="
+          echo " MEMERIKSA HASIL BUILD"
+          echo "=================================================="
+
+          mkdir -p "${{ github.workspace }}/output"
+
           if [ -f arch/arm64/boot/Image.gz-dtb ]; then
-             cp arch/arm64/boot/Image.gz-dtb ${{ github.workspace }}/output/
-             echo "SUKSES: File Image.gz-dtb berhasil diamankan!"
+
+            cp \
+              arch/arm64/boot/Image.gz-dtb \
+              "${{ github.workspace }}/output/"
+
+            echo "SUKSES: Image.gz-dtb berhasil diamankan!"
+
           elif [ -f arch/arm64/boot/Image.gz ]; then
-             cp arch/arm64/boot/Image.gz ${{ github.workspace }}/output/
-             find arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} ${{ github.workspace }}/output/ \; 2>/dev/null || true
-             echo "SUKSES: File Image.gz standar berhasil diamankan!"
+
+            cp \
+              arch/arm64/boot/Image.gz \
+              "${{ github.workspace }}/output/"
+
+            find arch/arm64/boot/dts/ \
+              -name "*.dtb" \
+              -exec cp {} "${{ github.workspace }}/output/" \; \
+              2>/dev/null || true
+
+            echo "SUKSES: Image.gz berhasil diamankan!"
+
           else
-             echo "GAGAL: Kompiladora tidak menghasilkan file biner di folder boot."
-             exit 1
+
+            echo "GAGAL: Kernel image tidak ditemukan!"
+            exit 1
+
           fi
 
-      - name: Unggah Hasil Kernel (Artifact)
+          echo ""
+          echo "=== FILE OUTPUT ==="
+          ls -lah "${{ github.workspace }}/output/"
+
+
+      # ============================================================
+      # UPLOAD ARTIFACT
+      # ============================================================
+      - name: Unggah Hasil Kernel
         uses: actions/upload-artifact@v4
+
         with:
-          name: Tissot-NetHunter-Kernel
+          name: Tissot-NetHunter-R8188EUS-Kernel
           path: ${{ github.workspace }}/output/
-          
