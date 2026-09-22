@@ -1,15 +1,10 @@
-name: Tissot Kernel Builder NetHunter
+name: Tissot Kernel - Diagnose R8188EUS
 
 on:
-  push:
-    branches:
-      - main
-      - master
-      - nethunter
   workflow_dispatch:
 
 jobs:
-  build:
+  diagnose:
     runs-on: ubuntu-22.04
 
     steps:
@@ -65,29 +60,160 @@ jobs:
       # =========================================================
       - name: Fix avtimer
         run: |
-          find drivers -type f -name "*.c" -exec \
-            sed -i \
+          find drivers \
+            -type f \
+            -name "*.c" \
+            -exec sed -i \
             's/msm_isp_set_avtimer_fptr(av_fptr);/\/\/ msm_isp_set_avtimer_fptr(av_fptr);/g' \
             {} \;
 
       # =========================================================
-      # CONFIG INJECTION
+      # SHOW ORIGINAL CONFIG
       # =========================================================
-      - name: Inject NetHunter / HID / WiFi config
+      - name: Inspect original tissot defconfig
         run: |
 
           CONFIG_FILE="arch/arm64/configs/tissot_defconfig"
 
           echo "=================================================="
-          echo " INJECT CONFIG"
+          echo " ORIGINAL TISSOT DEFCONFIG"
+          echo "=================================================="
+
+          echo
+          echo "--- WLAN / WIRELESS ---"
+
+          grep -nE \
+            'CONFIG_WLAN|CONFIG_WIRELESS|CONFIG_CFG80211|CONFIG_MAC80211|WLAN_VENDOR' \
+            "$CONFIG_FILE" \
+            || true
+
+          echo
+          echo "--- REALTEK ---"
+
+          grep -nE \
+            'NEW_REALTEK|RTL8188EU|WLAN_VENDOR_REALTEK' \
+            "$CONFIG_FILE" \
+            || true
+
+      # =========================================================
+      # CHECK REALTEK KCONFIG SOURCE
+      # =========================================================
+      - name: Inspect Realtek Kconfig
+        run: |
+
+          echo "=================================================="
+          echo " REALTEK KCONFIG SOURCE"
+          echo "=================================================="
+
+          echo
+          echo "===== drivers/net/wireless/realtek/Kconfig ====="
+
+          sed -n '1,100p' \
+            drivers/net/wireless/realtek/Kconfig \
+            || true
+
+          echo
+          echo "===== drivers/net/wireless/realtek/newrtl/Kconfig ====="
+
+          sed -n '1,150p' \
+            drivers/net/wireless/realtek/newrtl/Kconfig \
+            || true
+
+          echo
+          echo "===== rtl8188eus/Kconfig ====="
+
+          cat \
+            drivers/net/wireless/realtek/newrtl/rtl8188eus/Kconfig \
+            || true
+
+      # =========================================================
+      # CHECK REALTEK MAKEFILE
+      # =========================================================
+      - name: Inspect Realtek Makefile
+        run: |
+
+          echo "=================================================="
+          echo " REALTEK MAKEFILE"
+          echo "=================================================="
+
+          echo
+          echo "===== realtek/Makefile ====="
+
+          cat \
+            drivers/net/wireless/realtek/Makefile \
+            || true
+
+          echo
+          echo "===== newrtl/Makefile ====="
+
+          cat \
+            drivers/net/wireless/realtek/newrtl/Makefile \
+            || true
+
+          echo
+          echo "===== rtl8188eus/Makefile ====="
+
+          cat \
+            drivers/net/wireless/realtek/newrtl/rtl8188eus/Makefile \
+            || true
+
+      # =========================================================
+      # CHECK SYMBOL REFERENCES
+      # =========================================================
+      - name: Search Realtek symbols
+        run: |
+
+          echo "=================================================="
+          echo " SYMBOL REFERENCES"
+          echo "=================================================="
+
+          echo
+          echo "--- NEW_REALTEK ---"
+
+          grep -Rni \
+            "NEW_REALTEK" \
+            drivers/net/wireless \
+            --include='Kconfig*' \
+            --include='Makefile*' \
+            2>/dev/null \
+            | head -100 \
+            || true
+
+          echo
+          echo "--- RTL8188EU ---"
+
+          grep -Rni \
+            "RTL8188EU" \
+            drivers/net/wireless \
+            --include='Kconfig*' \
+            --include='Makefile*' \
+            2>/dev/null \
+            | head -100 \
+            || true
+
+      # =========================================================
+      # INJECT CONFIG
+      # =========================================================
+      - name: Inject diagnostic config
+        run: |
+
+          CONFIG_FILE="arch/arm64/configs/tissot_defconfig"
+
+          echo "=================================================="
+          echo " INJECT DIAGNOSTIC CONFIG"
           echo "=================================================="
 
           cat >> "$CONFIG_FILE" <<'EOF'
 
           # =================================================
-          # USB HID / GADGET
+          # USB
           # =================================================
           CONFIG_USB=y
+          CONFIG_USB_USBNET=y
+
+          # =================================================
+          # USB HID
+          # =================================================
           CONFIG_USB_G_ANDROID=y
           CONFIG_USB_F_HID=y
           CONFIG_CONFIGFS_F_HID=y
@@ -100,18 +226,13 @@ jobs:
           CONFIG_MAC80211=y
 
           # =================================================
-          # USB NETWORK
-          # =================================================
-          CONFIG_USB_USBNET=y
-
-          # =================================================
           # REALTEK R8188EUS
           # =================================================
           CONFIG_NEW_REALTEK=y
           CONFIG_RTL8188EU=y
 
           # =================================================
-          # DISABLE BLUETOOTH
+          # BLUETOOTH OFF
           # =================================================
           CONFIG_BT=n
           CONFIG_MSM_BT_POWER=n
@@ -121,67 +242,18 @@ jobs:
 
           echo
           echo "=================================================="
-          echo " CONFIG YANG DI-INJECT"
+          echo " CONFIG SEBELUM DEFCONFIG"
           echo "=================================================="
 
           grep -nE \
-            'CONFIG_USB_G_ANDROID|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID|CONFIG_WIRELESS|CONFIG_CFG80211|CONFIG_MAC80211|CONFIG_USB_USBNET|CONFIG_NEW_REALTEK|CONFIG_RTL8188EU|CONFIG_BT=' \
-            "$CONFIG_FILE" || true
-
-      # =========================================================
-      # CHECK REALTEK KCONFIG SOURCE
-      # =========================================================
-      - name: Check Realtek Kconfig source
-        run: |
-
-          echo "=================================================="
-          echo " REALTEK KCONFIG SOURCE"
-          echo "=================================================="
-
-          echo
-          echo "--- realtek/Kconfig ---"
-
-          grep -n "newrtl" \
-            drivers/net/wireless/realtek/Kconfig \
-            || true
-
-          echo
-          echo "--- newrtl/Kconfig ---"
-
-          grep -n -A20 -B5 \
-            "config NEW_REALTEK" \
-            drivers/net/wireless/realtek/newrtl/Kconfig \
-            || true
-
-          echo
-          echo "--- rtl8188eus/Kconfig ---"
-
-          grep -n -A15 -B5 \
-            "config RTL8188EU" \
-            drivers/net/wireless/realtek/newrtl/rtl8188eus/Kconfig \
-            || true
-
-      # =========================================================
-      # CHECK BEFORE DEFCONFIG
-      # =========================================================
-      - name: Check config before defconfig
-        run: |
-
-          CONFIG_FILE="arch/arm64/configs/tissot_defconfig"
-
-          echo "=================================================="
-          echo " SEBELUM MAKE TISSOT_DEFCONFIG"
-          echo "=================================================="
-
-          grep -nE \
-            'CONFIG_NEW_REALTEK|CONFIG_RTL8188EU|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID|CONFIG_WIRELESS|CONFIG_CFG80211|CONFIG_MAC80211|CONFIG_USB=' \
+            'CONFIG_USB=|CONFIG_USB_USBNET|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID|CONFIG_WIRELESS|CONFIG_CFG80211|CONFIG_MAC80211|CONFIG_NEW_REALTEK|CONFIG_RTL8188EU|CONFIG_BT=' \
             "$CONFIG_FILE" \
             || true
 
       # =========================================================
-      # DEFCONFIG
+      # RUN DEFCONFIG
       # =========================================================
-      - name: Generate kernel config
+      - name: Run tissot defconfig
         run: |
 
           export ARCH=arm64
@@ -190,179 +262,145 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
           echo "=================================================="
-          echo " MENJALANKAN TISSOT_DEFCONFIG"
+          echo " RUN MAKE TISSOT_DEFCONFIG"
           echo "=================================================="
 
           make tissot_defconfig
 
       # =========================================================
-      # POST DEFCONFIG CHECK
+      # DIAGNOSE FINAL .CONFIG
       # =========================================================
-      - name: Verify final Kconfig
+      - name: Diagnose final Kconfig
         run: |
 
           echo "=================================================="
-          echo " HASIL KCONFIG DI .config"
+          echo " DIAGNOSA FINAL KCONFIG"
           echo "=================================================="
 
           echo
-          echo "--- USB / HID ---"
+          echo "##################################################"
+          echo "# 1. REALTEK SYMBOL"
+          echo "##################################################"
 
           grep -nE \
-            'CONFIG_USB_G_ANDROID|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID' \
+            'NEW_REALTEK|RTL8188EU' \
             .config \
             || true
+
 
           echo
-          echo "--- WIRELESS CORE ---"
+          echo "##################################################"
+          echo "# 2. REALTEK VENDOR"
+          echo "##################################################"
 
           grep -nE \
-            'CONFIG_WIRELESS|CONFIG_CFG80211|CONFIG_MAC80211' \
+            'WLAN_VENDOR_REALTEK|WLAN_VENDOR_ATH|WLAN_VENDOR_' \
             .config \
             || true
+
 
           echo
-          echo "--- REALTEK R8188EUS ---"
+          echo "##################################################"
+          echo "# 3. WLAN / WIRELESS"
+          echo "##################################################"
 
           grep -nE \
-            'CONFIG_NEW_REALTEK|CONFIG_RTL8188EU' \
+            'CONFIG_WLAN=|CONFIG_WIRELESS=|CONFIG_CFG80211=|CONFIG_MAC80211=' \
             .config \
             || true
+
 
           echo
-          echo "--- USB ---"
+          echo "##################################################"
+          echo "# 4. USB"
+          echo "##################################################"
 
           grep -nE \
-            'CONFIG_USB=|CONFIG_USB_USBNET' \
+            'CONFIG_USB=|CONFIG_USB_USBNET|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID' \
             .config \
             || true
+
 
           echo
-          echo "--- NEGATIVE CONFIG ---"
+          echo "##################################################"
+          echo "# 5. NEGATIVE SYMBOL"
+          echo "##################################################"
 
           grep -nE \
-            '# CONFIG_NEW_REALTEK is not set|# CONFIG_RTL8188EU is not set' \
+            '# CONFIG_NEW_REALTEK is not set|# CONFIG_RTL8188EU is not set|# CONFIG_WLAN_VENDOR_REALTEK is not set|# CONFIG_WLAN is not set' \
             .config \
             || true
 
-      # =========================================================
-      # VALIDATE R8188EUS
-      # =========================================================
-      - name: Validate R8188EUS
-        run: |
 
-          echo "=================================================="
-          echo " VALIDASI R8188EUS"
-          echo "=================================================="
+          echo
+          echo "##################################################"
+          echo "# 6. COMPLETE WIRELESS SECTION"
+          echo "##################################################"
 
-          if grep -q '^CONFIG_NEW_REALTEK=y$' .config && \
-             grep -q '^CONFIG_RTL8188EU=y$' .config; then
+          sed -n '1080,1180p' \
+            .config \
+            || true
 
-              echo "R8188EUS CONFIG: OK"
-              echo "CONFIG_NEW_REALTEK=y"
-              echo "CONFIG_RTL8188EU=y"
 
+          echo
+          echo "##################################################"
+          echo "# 7. WLAN SECTION"
+          echo "##################################################"
+
+          sed -n '1600,1680p' \
+            .config \
+            || true
+
+
+          echo
+          echo "##################################################"
+          echo "# 8. FINAL STATUS"
+          echo "##################################################"
+
+          if grep -q '^CONFIG_NEW_REALTEK=y$' .config; then
+              echo "NEW_REALTEK = YES"
           else
-
-              echo "ERROR: R8188EUS BELUM AKTIF DI .config"
-              echo
-              echo "Isi yang ditemukan:"
-
-              grep -nE \
-                'NEW_REALTEK|RTL8188EU' \
-                .config \
-                || true
-
-              exit 1
-
+              echo "NEW_REALTEK = NO"
           fi
 
-      # =========================================================
-      # COMPILE
-      # =========================================================
-      - name: Compile kernel
-        run: |
-
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-
-          export LOCALVERSION="-Umbaran_01"
-          export KBUILD_BUILD_USER="sukma"
-          export KBUILD_BUILD_HOST="UmbaranDev-Cloud"
-
-          export ROOT_DIR="${{ github.workspace }}"
-
-          export INTERNAL_INCLUDES="\
-          -I${ROOT_DIR}/include \
-          -I${ROOT_DIR}/arch/arm64/include \
-          -I${ROOT_DIR}/arch/arm64/include/generated \
-          -I${ROOT_DIR}/include/generated"
-
-          echo "=================================================="
-          echo " MULAI KOMPILASI KERNEL"
-          echo "=================================================="
-
-          make -j$(nproc --all) \
-            KCFLAGS="-w -fpermissive ${INTERNAL_INCLUDES}" \
-            CFLAGS_MODULE="-w" \
-            CONFIG_SYSTEM_TRUSTED_KEYS="" \
-            CONFIG_MODULE_SIG=n \
-            CONFIG_MSM_AVTIMER=n \
-            CONFIG_BT=n
-
-      # =========================================================
-      # CHECK OUTPUT
-      # =========================================================
-      - name: Check kernel output
-        run: |
-
-          echo "=================================================="
-          echo " HASIL BUILD"
-          echo "=================================================="
-
-          find arch/arm64/boot \
-            -maxdepth 2 \
-            -type f \
-            \( \
-              -name "Image.gz" \
-              -o -name "Image.gz-dtb" \
-              -o -name "*.dtb" \
-            \) \
-            -print
-
-      # =========================================================
-      # PREPARE ARTIFACT
-      # =========================================================
-      - name: Prepare artifact
-        run: |
-
-          mkdir -p output
-
-          if [ -f arch/arm64/boot/Image.gz-dtb ]; then
-              cp arch/arm64/boot/Image.gz-dtb output/
-          elif [ -f arch/arm64/boot/Image.gz ]; then
-              cp arch/arm64/boot/Image.gz output/
+          if grep -q '^CONFIG_RTL8188EU=y$' .config; then
+              echo "RTL8188EU = YES"
+          else
+              echo "RTL8188EU = NO"
           fi
 
-          find arch/arm64/boot/dts \
-            -type f \
-            -name "*.dtb" \
-            -exec cp {} output/ \; \
-            2>/dev/null || true
+          if grep -q '^CONFIG_WLAN=y$' .config; then
+              echo "WLAN = YES"
+          else
+              echo "WLAN = NO"
+          fi
 
+          if grep -q '^CONFIG_WIRELESS=y$' .config; then
+              echo "WIRELESS = YES"
+          else
+              echo "WIRELESS = NO"
+          fi
+
+          if grep -q '^CONFIG_CFG80211=y$' .config; then
+              echo "CFG80211 = YES"
+          else
+              echo "CFG80211 = NO"
+          fi
+
+          if grep -q '^CONFIG_MAC80211=y$' .config; then
+              echo "MAC80211 = YES"
+          else
+              echo "MAC80211 = NO"
+          fi
+
+
+          echo
           echo "=================================================="
-          echo " OUTPUT"
+          echo " DIAGNOSA SELESAI"
           echo "=================================================="
 
-          ls -lh output
-
-      # =========================================================
-      # UPLOAD ARTIFACT
-      # =========================================================
-      - name: Upload kernel artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tissot-kernel-r8188eus
-          path: output/
+          echo
+          echo "CATATAN:"
+          echo "Workflow ini sengaja TIDAK melakukan compile."
+          echo "Tujuan run ini hanya mencari penyebab"
+          echo "CONFIG_RTL8188EU dibuang oleh Kconfig."
