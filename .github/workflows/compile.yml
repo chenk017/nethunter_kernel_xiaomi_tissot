@@ -92,8 +92,9 @@ jobs:
           echo " MENYIAPKAN KONFIGURASI NETHUNTER"
           echo "=================================================="
 
-          # USB / HID
-          echo "CONFIG_USB_G_ANDROID=y" >> "$CONFIG_FILE"
+          # USB / HID CONFIGFS FIX (Menggunakan ConfigFS Murni untuk Mencegah Error u_ncm.h)
+          echo "CONFIG_USB_G_ANDROID=n" >> "$CONFIG_FILE"
+          echo "CONFIG_USB_CONFIGFS=y" >> "$CONFIG_FILE"
           echo "CONFIG_USB_F_HID=y" >> "$CONFIG_FILE"
           echo "CONFIG_CONFIGFS_F_HID=y" >> "$CONFIG_FILE"
 
@@ -171,7 +172,7 @@ jobs:
           echo "=================================================="
 
           echo "--- USB / HID ---"
-          grep -E 'CONFIG_USB=|CONFIG_USB_USBNET|CONFIG_USB_G_ANDROID|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID' .config || true
+          grep -E 'CONFIG_USB=|CONFIG_USB_USBNET|CONFIG_USB_CONFIGFS|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID' .config || true
 
           echo "--- WIRELESS CORE ---"
           grep -E 'CONFIG_WLAN=|CONFIG_WIRELESS=|CONFIG_CFG80211=|CONFIG_MAC80211=' .config || true
@@ -229,7 +230,7 @@ jobs:
 
 
       # ============================================================
-      # COMPILE KERNEL WITH MULTIPLE TRACE PATH FIX
+      # COMPILE KERNEL WITH USB INCLUDE FIX
       # ============================================================
       - name: Proses Kompilasi Kernel
         run: |
@@ -242,8 +243,8 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           
-          # KCFLAGS diperluas untuk menyertakan folder KGSL, IPA_V2, dan IPA_CLIENTS
-          make -j$(nproc --all) KCFLAGS="-I$(pwd)/drivers/gpu/msm -I$(pwd)/drivers/platform/msm/ipa/ipa_v2 -I$(pwd)/drivers/platform/msm/ipa/ipa_clients"
+          # Ditambahkan jalur pencarian internal drivers/usb/gadget untuk menyuplai header u_ncm.h secara presisi
+          make -j$(nproc --all) KCFLAGS="-I$(pwd)/drivers/gpu/msm -I$(pwd)/drivers/platform/msm/ipa/ipa_v2 -I$(pwd)/drivers/platform/msm/ipa/ipa_clients -I$(pwd)/drivers/usb/gadget"
           
           echo "=================================================="
           echo " KOMPILASI SELESAI"
