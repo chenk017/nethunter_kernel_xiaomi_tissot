@@ -251,7 +251,7 @@ jobs:
 
 
       # ============================================================
-      # HARD VALIDATION R8188EUS & NAT
+      # HARD VALIDATION R8188EUS & NAT (VERSI PERBAIKAN UTUH)
       # ============================================================
       - name: Validasi R8188EUS dan NAT
         run: |
@@ -295,4 +295,3 @@ jobs:
           fi
 
           if [ $FAILED -ne 0 ]; then
-            echo "Validasi gagal. Hentikan proses build."
