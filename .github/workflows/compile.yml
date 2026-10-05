@@ -92,47 +92,26 @@ jobs:
           echo " MENYIAPKAN KONFIGURASI NETHUNTER"
           echo "=================================================="
 
-
-          # --------------------------------------------------------
           # USB / HID
-          # --------------------------------------------------------
           echo "CONFIG_USB_G_ANDROID=y" >> "$CONFIG_FILE"
           echo "CONFIG_USB_F_HID=y" >> "$CONFIG_FILE"
           echo "CONFIG_CONFIGFS_F_HID=y" >> "$CONFIG_FILE"
 
-
-          # --------------------------------------------------------
           # WIRELESS CORE
-          # --------------------------------------------------------
           echo "CONFIG_WIRELESS=y" >> "$CONFIG_FILE"
           echo "CONFIG_CFG80211=y" >> "$CONFIG_FILE"
           echo "CONFIG_MAC80211=y" >> "$CONFIG_FILE"
 
-
-          # --------------------------------------------------------
           # REALTEK R8188EUS
-          # Dependency:
-          #
-          # WLAN
-          #   -> WLAN_VENDOR_REALTEK
-          #       -> NEW_REALTEK
-          #           -> RTL8188EU
-          # --------------------------------------------------------
           echo "CONFIG_WLAN_VENDOR_REALTEK=y" >> "$CONFIG_FILE"
           echo "CONFIG_NEW_REALTEK=y" >> "$CONFIG_FILE"
           echo "CONFIG_RTL8188EU=y" >> "$CONFIG_FILE"
 
-
-          # --------------------------------------------------------
           # USB SUPPORT
-          # --------------------------------------------------------
           echo "CONFIG_USB=y" >> "$CONFIG_FILE"
           echo "CONFIG_USB_USBNET=y" >> "$CONFIG_FILE"
 
-
-          # --------------------------------------------------------
-          # KALI NETHUNTER NAT & NETFILTER SUPPORT (SUNTIKAN BARU)
-          # --------------------------------------------------------
+          # KALI NETHUNTER NAT & NETFILTER SUPPORT
           echo "CONFIG_NETFILTER=y" >> "$CONFIG_FILE"
           echo "CONFIG_NETFILTER_ADVANCED=y" >> "$CONFIG_FILE"
           echo "CONFIG_NF_CONNTRACK=y" >> "$CONFIG_FILE"
@@ -145,36 +124,25 @@ jobs:
           echo "CONFIG_NETFILTER_XT_MATCH_STATE=y" >> "$CONFIG_FILE"
           echo "CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y" >> "$CONFIG_FILE"
 
-
-          # --------------------------------------------------------
           # MATIKAN BLUETOOTH
-          # --------------------------------------------------------
           echo "CONFIG_BT=n" >> "$CONFIG_FILE"
           echo "CONFIG_MSM_BT_POWER=n" >> "$CONFIG_FILE"
           echo "CONFIG_BTFM_SLIM=n" >> "$CONFIG_FILE"
           echo "CONFIG_BTFM_SLIM_WCN3990=n" >> "$CONFIG_FILE"
 
-
-          # --------------------------------------------------------
           # MATIKAN MODULE SIGNATURE
-          # --------------------------------------------------------
           echo "CONFIG_MODULE_SIG=n" >> "$CONFIG_FILE"
           echo "CONFIG_MODULE_SIG_FORCE=n" >> "$CONFIG_FILE"
           echo "CONFIG_SYSTEM_TRUSTED_KEYRING=n" >> "$CONFIG_FILE"
           echo "CONFIG_SYSTEM_REVOCATION_LIST=n" >> "$CONFIG_FILE"
 
-
-          # --------------------------------------------------------
           # CAMERA / AVTIMER
-          # --------------------------------------------------------
           echo "CONFIG_VIDEO_V4L2_SUBDEV_API=n" >> "$CONFIG_FILE"
           echo "CONFIG_MEDIA_CAMERA_SUPPORT=n" >> "$CONFIG_FILE"
           echo "CONFIG_MSM_CAMERA=n" >> "$CONFIG_FILE"
           echo "CONFIG_MSM_CAMERA_V4L2=n" >> "$CONFIG_FILE"
           echo "CONFIG_MSM_AVTIMER=n" >> "$CONFIG_FILE"
 
-
-          echo
           echo "=================================================="
           echo " KONFIGURASI SELESAI"
           echo "=================================================="
@@ -185,16 +153,10 @@ jobs:
       # ============================================================
       - name: Generate Tissot Defconfig
         run: |
-
           export ARCH=arm64
           export SUBARCH=arm64
-
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-
-          echo "=================================================="
-          echo " LOAD TISSOT DEFCONFIG"
-          echo "=================================================="
 
           make tissot_defconfig
 
@@ -204,64 +166,33 @@ jobs:
       # ============================================================
       - name: Verifikasi Konfigurasi Final
         run: |
-
           echo "=================================================="
           echo " HASIL KONFIGURASI FINAL"
           echo "=================================================="
 
-
-          echo
           echo "--- USB / HID ---"
+          grep -E 'CONFIG_USB=|CONFIG_USB_USBNET|CONFIG_USB_G_ANDROID|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID' .config || true
 
-          grep -E \
-            'CONFIG_USB=|CONFIG_USB_USBNET|CONFIG_USB_G_ANDROID|CONFIG_USB_F_HID|CONFIG_CONFIGFS_F_HID' \
-            .config || true
-
-
-          echo
           echo "--- WIRELESS CORE ---"
+          grep -E 'CONFIG_WLAN=|CONFIG_WIRELESS=|CONFIG_CFG80211=|CONFIG_MAC80211=' .config || true
 
-          grep -E \
-            'CONFIG_WLAN=|CONFIG_WIRELESS=|CONFIG_CFG80211=|CONFIG_MAC80211=' \
-            .config || true
-
-
-          echo
           echo "--- REALTEK R8188EUS ---"
+          grep -E 'CONFIG_WLAN_VENDOR_REALTEK=|CONFIG_NEW_REALTEK=|CONFIG_RTL8188EU=' .config || true
 
-          grep -E \
-            'CONFIG_WLAN_VENDOR_REALTEK=|CONFIG_NEW_REALTEK=|CONFIG_RTL8188EU=' \
-            .config || true
-
-
-          echo
-          echo "--- KALI NETHUNTER NAT (VERIFIKASI BARU) ---"
-
-          grep -E \
-            'CONFIG_NETFILTER=|CONFIG_IP_NF_NAT=|CONFIG_IP_NF_TARGET_MASQUERADE=' \
-            .config || true
-
-
-          echo
-          echo "--- NEGATIVE REALTEK ---"
-
-          grep -E \
-            '# CONFIG_WLAN_VENDOR_REALTEK is not set|# CONFIG_NEW_REALTEK is not set|# CONFIG_RTL8188EU is not set' \
-            .config || true
+          echo "--- KALI NETHUNTER NAT ---"
+          grep -E 'CONFIG_NETFILTER=|CONFIG_IP_NF_NAT=|CONFIG_IP_NF_TARGET_MASQUERADE=' .config || true
 
 
       # ============================================================
-      # HARD VALIDATION R8188EUS & NAT (VERSI PERBAIKAN UTUH)
+      # HARD VALIDATION R8188EUS & NAT
       # ============================================================
       - name: Validasi R8188EUS dan NAT
         run: |
-
           echo "=================================================="
           echo " VALIDASI R8188EUS DAN NAT"
           echo "=================================================="
-
+          
           FAILED=0
-
 
           if grep -q '^CONFIG_WLAN_VENDOR_REALTEK=y$' .config; then
             echo "OK: CONFIG_WLAN_VENDOR_REALTEK=y"
@@ -270,7 +201,6 @@ jobs:
             FAILED=1
           fi
 
-
           if grep -q '^CONFIG_NEW_REALTEK=y$' .config; then
             echo "OK: CONFIG_NEW_REALTEK=y"
           else
@@ -278,14 +208,12 @@ jobs:
             FAILED=1
           fi
 
-
           if grep -q '^CONFIG_RTL8188EU=y$' .config; then
             echo "OK: CONFIG_RTL8188EU=y"
           else
             echo "ERROR: CONFIG_RTL8188EU tidak aktif"
             FAILED=1
           fi
-
 
           if grep -q '^CONFIG_IP_NF_NAT=y$' .config; then
             echo "OK: CONFIG_IP_NF_NAT=y (Dukungan NAT Aktif)"
@@ -295,3 +223,37 @@ jobs:
           fi
 
           if [ $FAILED -ne 0 ]; then
+            echo "Validasi gagal. Hentikan proses build."
+            exit 1
+          fi
+
+
+      # ============================================================
+      # COMPILE KERNEL
+      # ============================================================
+      - name: Proses Kompilasi Kernel
+        run: |
+          echo "=================================================="
+          echo " MEMULAI PROSES KOMPILASI KERNEL TISSOT"
+          echo "=================================================="
+          
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          
+          make -j$(nproc --all)
+          
+          echo "=================================================="
+          echo " KOMPILASI SELESAI"
+          echo "=================================================="
+
+
+      # ============================================================
+      # UPLOAD ARTIFACT
+      # ============================================================
+      - name: Unggah Hasil Kernel Image
+        uses: actions/checkout@v4
+        with:
+          name: NetHunter-Kernel-Tissot
+          path: arch/arm64/boot/Image.gz-dtb
